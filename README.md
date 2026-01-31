@@ -73,7 +73,7 @@ Vim / Neovim 両対応プラグインとして実装する
 
 ---------
 
-## プラグインのアーキティクチャ
+## プラグインのアーキテクチャ
 
 ### 全体方針
 
@@ -239,6 +239,8 @@ unlet s:save_cpo
 
 ### `autoload/${plugin_name}.vim`（公開 API を集約）
 
+> **`cpoptions` ガード**: autoload ファイルでも `<SID>` マッピングや `line-continuation`（`\` 行継続）を使う場合は `plugin/` と同様に `let s:save_cpo = &cpoptions | set cpoptions&vim` … `let &cpoptions = s:save_cpo` で囲むこと。
+
 ```vim
 function! ${plugin_name}#run(input) abort
   return ${plugin_name}#core#run(a:input)
@@ -256,11 +258,10 @@ function! ${plugin_name}#compat#notify(msg, level) abort
   " level: 'info' | 'warn' | 'error'
   if exists('*nvim_notify')
     " Neovim（任意）
-    call nvim_notify(a:msg, a:level ==# 'error' ? 3 : a:level ==# 'warn' ? 2 : 1, {})
+    call nvim_notify(a:msg, a:level ==# 'error' ? 4 : a:level ==# 'warn' ? 3 : 2, {})
   else
-    " Vim/共通フォールバック
     if a:level ==# 'error'
-      echoerr a:msg
+      echohl ErrorMsg | echom a:msg | echohl None
     else
       echom a:msg
     endif
@@ -287,10 +288,8 @@ function! ${plugin_name}#deps#cmd#run(argv, opts) abort
     return call(g:${plugin_name}_cmd_runner, [a:argv, a:opts])
   endif
 
-  " 実行は compat に寄せてもよい（job があれば async など）
-  " ここでは最小例として同期フォールバックのみ例示
-  let l:cmd = join(map(copy(a:argv), 'shellescape(v:val)'), ' ')
-  let l:out = systemlist(l:cmd, get(a:opts, 'input', ''))
+  let l:input = get(a:opts, 'input', '')
+  let l:out = systemlist(a:argv, l:input)
   let l:code = v:shell_error
   return {'ok': l:code == 0, 'code': l:code, 'stdout': l:out, 'stderr': []}
 endfunction
@@ -309,7 +308,7 @@ function! ${plugin_name}#deps#plugin#call(FuncName, args, opts) abort
     return {'ok': v:false, 'value': v:null, 'error': 'missing dependency: ' . a:FuncName}
   endif
   try
-    let l:v = call(function(a:FuncName), a:args)
+    let l:v = call(a:FuncName, a:args)
     return {'ok': v:true, 'value': l:v, 'error': ''}
   catch /.*/
     return {'ok': v:false, 'value': v:null, 'error': v:exception}
